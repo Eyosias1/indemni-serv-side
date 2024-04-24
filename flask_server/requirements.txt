@@ -3,3 +3,4 @@ Flask
 markdown2
 pdfkit
 pandas
+flask_cors
