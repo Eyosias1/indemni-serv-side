@@ -1,5 +1,5 @@
-gunicorn==20.1.0
-Flask==1.1.2
-Markdown2==2.4.0
-pdfkit==0.6.1
-pandas==1.3.3[no_numpy]
+gunicorn==20.1.0 ; python_version >= "3.11" and python_version < "4.0"
+Flask==1.1.2 ; python_version >= "3.11" and python_version < "4.0"
+Markdown2==2.4.0 ; python_version >= "3.11" and python_version < "4.0"
+pdfkit==0.6.1 ; python_version >= "3.11" and python_version < "4.0"
+pandas==1.3.3 ; python_version >= "3.11" and python_version < "4.0"
