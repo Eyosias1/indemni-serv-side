@@ -1,0 +1,1 @@
+web: gunicorn Pan-heur_calc:app
