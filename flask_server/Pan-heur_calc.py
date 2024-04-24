@@ -9,7 +9,7 @@ from flask import Flask, request, send_file
 # Define the function
 
 app = Flask(__name__)
-CORS(app, origins="https://eyosias1.github.io/")
+CORS(app)
 
 def from_shift_to_dict1(shift_file_path):
     shifts_data = []
@@ -289,4 +289,4 @@ def process_csv():
     )
 
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run()
