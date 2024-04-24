@@ -9,7 +9,7 @@ from flask import Flask, request, send_file
 # Define the function
 
 app = Flask(__name__)
-CORS(app, origins="https://eyosias1.github.io/indemni-calc-panier-hsup/")
+CORS(app, origins="https://eyosias1.github.io/")
 
 def from_shift_to_dict1(shift_file_path):
     shifts_data = []
