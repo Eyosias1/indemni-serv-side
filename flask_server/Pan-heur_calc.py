@@ -214,36 +214,6 @@ def parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hou
 
     return temp_pdf_file_path
 
-
-
-# base_directory = "2024"
-# Specify the path to wkhtmltopdf
-# path_wkhtmltopdf = '/usr/local/bin/wkhtmltopdf'  # Use the path found on your system
-# config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
-# Define the meal voucher amount and night hour supplement
-# Prompt for the user's first name
-# full_name = input("Please enter your Full name: ")
-# while True:
-#     user_input = input("Please enter the hourly rate (taux horaire)\nOr press enter to use the default value of 11.07: ")
-#     if user_input == "":
-#         # taux_horaire_net = 11.07  # Default value
-#         taux_horaire_net = 11.87  # Default value
-#         break
-#     else:
-#         try:
-#             taux_horaire_net = float(user_input)
-#             break  # Exit loop if conversion is successful
-#         except ValueError:
-#             print("The input was not a valid float. Please try again.")
-
-# At this point, taux_horaire is guaranteed to be a float
-# increased_hourly_rate = taux_horaire_net * (20 / 100)
-# night_hour_supplement = increased_hourly_rate
-# meal_voucher_amount = 13.78
-# print(f"\nThe entered hourly rate is: {taux_horaire_net}\nFor a {meal_voucher_amount} meal voucher (panier repas)")
-# annual_markdown_report = f"# {full_name}\n"
-# shifts_data = extract_from_shift('', 'Moussa Keibe.csv')
-# shifts_dict = shifts_data
 css_style = """
     <style>
     table {
@@ -268,8 +238,12 @@ css_style = """
 
 @app.route('/process-csv', methods=['POST'])
 def process_csv():
-    uploaded_file = request.files['csvfile']
-    shift_dict_1 = extract_from_shift("", uploaded_file)
+    uploaded_file_csv = request.files['csvfile']
+    uploaded_file_txt = request.files['txtfile']
+    if uploaded_file_csv:
+        shift_dict_1 = extract_from_shift("", uploaded_file_csv)
+    else:
+        shift_dict_1 = extract_from_shift(uploaded_file_txt, "")
     full_name = request.form['fullname']
     hourly_rate_input = request.form['hourlyrate']
     meal_ind = request.form['PanRepas']
