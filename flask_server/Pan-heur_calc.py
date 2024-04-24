@@ -218,8 +218,8 @@ def parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hou
 
 # base_directory = "2024"
 # Specify the path to wkhtmltopdf
-# path_wkhtmltopdf = '/usr/local/bin/wkhtmltopdf'  # Use the path found on your system
-# config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
+path_wkhtmltopdf = '/usr/local/bin/wkhtmltopdf'  # Use the path found on your system
+config = pdfkit.configuration(wkhtmltopdf=path_wkhtmltopdf)
 # Define the meal voucher amount and night hour supplement
 # Prompt for the user's first name
 # full_name = input("Please enter your Full name: ")
