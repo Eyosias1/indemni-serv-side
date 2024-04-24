@@ -2,4 +2,4 @@ gunicorn==20.1.0
 Flask==1.1.2
 Markdown2==2.4.0
 pdfkit==0.6.1
-pandas==1.3.3 --no-deps
+pandas==1.3.3[no_numpy]
