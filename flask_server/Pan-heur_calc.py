@@ -3,7 +3,6 @@ from datetime import datetime, time
 import markdown2
 import pdfkit
 import pandas as pd
-from io import BytesIO
 from flask_cors import CORS
 import tempfile
 from flask import Flask, request, send_file
