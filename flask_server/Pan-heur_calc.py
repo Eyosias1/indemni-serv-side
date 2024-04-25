@@ -7,33 +7,64 @@ from flask_cors import CORS
 import tempfile
 import re
 import csv
+from werkzeug.datastructures import FileStorage
 from flask import Flask, request, send_file
 # Define the function
 
 app = Flask(__name__)
 CORS(app)
 
-def from_shift_to_dict1(shift_file_path):
+# def from_shift_to_dict1(shift_file_path):
+#     shifts_data = []
+#     shifts_dict = {}
+#     # Open the file and read the lines
+#     with open(shift_file_path, 'r') as file:
+#         next(file)
+#         for line in file:
+#             # Split the line into components based on '|'
+#             parts = line.strip().split('|')
+#             # Check if the line contains the expected number of parts (3 for date, start time, end time)
+#             if len(parts) == 3:
+#                 date, start_time, end_time = parts
+#                 # Trim whitespace and add the tuple to the shifts_data list
+#                 shifts_data.append((date.strip(), start_time.strip(), end_time.strip()))
+#     for date, start, end in shifts_data:
+#         formatted_date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
+#         if formatted_date not in shifts_dict:
+#             shifts_dict[formatted_date] = [(start, end)]
+#         else:
+#             shifts_dict[formatted_date].append((start, end))
+#     return shifts_dict
+
+def from_shift_to_dict1(file_storage):
     shifts_data = []
     shifts_dict = {}
-    # Open the file and read the lines
-    with open(shift_file_path, 'r') as file:
-        next(file)
-        for line in file:
-            # Split the line into components based on '|'
-            parts = line.strip().split('|')
-            # Check if the line contains the expected number of parts (3 for date, start time, end time)
-            if len(parts) == 3:
-                date, start_time, end_time = parts
-                # Trim whitespace and add the tuple to the shifts_data list
-                shifts_data.append((date.strip(), start_time.strip(), end_time.strip()))
+    
+    # Ensure the file pointer is at the beginning
+    file_storage.seek(0)
+
+    # Read the file line by line from the FileStorage stream
+    for line in file_storage:
+        # Decode the line to string if necessary (file_storage.read() returns bytes)
+        line = line.decode('utf-8')
+        # Split the line into components based on '|'
+        parts = line.strip().split('|')
+        # Check if the line contains the expected number of parts (3 for date, start time, end time)
+        if len(parts) == 3:
+            date, start_time, end_time = parts
+            # Trim whitespace and add the tuple to the shifts_data list
+            shifts_data.append((date.strip(), start_time.strip(), end_time.strip()))
+
+    # Convert shifts_data to a dictionary grouped by formatted date
     for date, start, end in shifts_data:
         formatted_date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
         if formatted_date not in shifts_dict:
             shifts_dict[formatted_date] = [(start, end)]
         else:
             shifts_dict[formatted_date].append((start, end))
+
     return shifts_dict
+
 
 def from_shifts_df_to_dict(df_final_sorted):
     shifts_dict = {}
@@ -55,13 +86,14 @@ def rename_columns_with_regex(df):
     df.columns = [re.sub(r'start[\w-]*datetime', 'start_datetime', col, flags=re.I) for col in df.columns]
     df.columns = [re.sub(r'end[\w-]*datetime', 'end_datetime', col, flags=re.I) for col in df.columns]
     return df
-def detect_separator(csv_file_path):
+def detect_separator(file_storage):
     # Open the file in text mode and read a small part to guess the delimiter
-    with open(csv_file_path, 'r', newline='', encoding='iso-8859-1') as file:
-        sniffer = csv.Sniffer()
-        # Read the first 1024 bytes to get a sample of the file for sniffing
-        dialect = sniffer.sniff(file.read(1024))
-        return dialect.delimiter
+    content = file_storage.stream.read(1024)
+    # Move the pointer back to the start of the file for further processing
+    file_storage.stream.seek(0)
+    sniffer = csv.Sniffer()
+    dialect = sniffer.sniff(content.decode('iso-8859-1'))
+    return dialect.delimiter
 def decide_dayfirst(df, date_column):
     day_first = True
     # Sample up to 10 non-null date entries
@@ -96,12 +128,12 @@ def process_dates(df, date_columns):
     df['start time'] = df['start_datetime'].dt.strftime('%H:%M:%S')
     df['end time'] = df['end_datetime'].dt.strftime('%H:%M:%S')
     return df
-def extract_from_shift(file_path, csv_file_path):
+def extract_from_shift(file_storage):
     # Initialize an empty list to hold the shift data
-    if csv_file_path:
-        delimiter = detect_separator(csv_file_path)
+    if file_storage.filename.endswith('.csv'):
+        delimiter = detect_separator(file_storage)
         # if the file is comma separated and contains western european characters
-        df = pd.read_csv(csv_file_path, encoding='iso-8859-1', sep=delimiter)
+        df = pd.read_csv(file_storage, encoding='iso-8859-1', sep=delimiter)
         df = rename_columns_with_regex(df)
         date_columns = ['start_datetime', 'end_datetime']  # Specify the date columns
         df = process_dates(df, date_columns)
@@ -114,8 +146,8 @@ def extract_from_shift(file_path, csv_file_path):
 
         # Save the sorted dataframe to a new CSV file
         shifts_dict = from_shifts_df_to_dict(df_final_sorted)
-    else:
-        shifts_dict = from_shift_to_dict1(file_path)
+    elif file_storage.filename.endswith('.txt'):
+        shifts_dict = from_shift_to_dict1(file_storage)
     return shifts_dict
 
 
@@ -273,12 +305,12 @@ css_style = """
 
 @app.route('/process-csv', methods=['POST'])
 def process_csv():
-    uploaded_file_csv = request.files.get('csvfile')
     uploaded_file_txt = request.files.get('txtfile')
+    uploaded_file_csv = request.files.get('csvfile')
     if uploaded_file_csv:
-        shift_dict_1 = extract_from_shift("", uploaded_file_csv)
+        shift_dict_1 = extract_from_shift(uploaded_file_csv)
     else:
-        shift_dict_1 = extract_from_shift(uploaded_file_txt, "")
+        shift_dict_1 = extract_from_shift(uploaded_file_txt)
 
     full_name = request.form['fullname']
     hourly_rate_input = request.form['hourlyrate']
@@ -288,9 +320,7 @@ def process_csv():
     increased_hourly_rate = taux_horaire_net * (20 / 100)
     night_hour_supplement = increased_hourly_rate
     annual_markdown_report = f"# {full_name}\n"
-    attachment_filename =  f"{full_name}_Report.pdf"
     pdf_to_file_path = parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hour_supplement, css_style, full_name, shift_dict_1)
-    file_name = os.path.join(f"{full_name}_Annual_Report.pdf")
     # Return the PDF as a file attachment
     return send_file(
         pdf_to_file_path,
@@ -299,4 +329,4 @@ def process_csv():
     )
 
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
