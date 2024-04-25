@@ -40,28 +40,31 @@ def from_shift_to_dict1(file_storage):
     shifts_data = []
     shifts_dict = {}
     
-    # Ensure the file pointer is at the beginning
+    # Reset the file pointer to the start of the file
     file_storage.seek(0)
+    
+    # Read all lines or iterate directly
+    lines = file_storage.readlines()  # Read all lines at once
+    lines_iterator = iter(lines)  # Convert the list of lines into an iterator
 
-    # Read the file line by line from the FileStorage stream
-    for line in file_storage:
-        # Decode the line to string if necessary (file_storage.read() returns bytes)
-        line = line.decode('utf-8')
-        # Split the line into components based on '|'
-        parts = line.strip().split('|')
-        # Check if the line contains the expected number of parts (3 for date, start time, end time)
+    # Skip the header by calling next on the iterator
+    next(lines_iterator)
+
+    # Now process each line in the file
+    for line_bytes in lines_iterator:
+        line = line_bytes.decode('utf-8').strip()  # Decode line if FileStorage reads as bytes
+        parts = line.split('|')
         if len(parts) == 3:
             date, start_time, end_time = parts
-            # Trim whitespace and add the tuple to the shifts_data list
-            shifts_data.append((date.strip(), start_time.strip(), end_time.strip()))
-
-    # Convert shifts_data to a dictionary grouped by formatted date
-    for date, start, end in shifts_data:
-        formatted_date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
-        if formatted_date not in shifts_dict:
-            shifts_dict[formatted_date] = [(start, end)]
-        else:
-            shifts_dict[formatted_date].append((start, end))
+            try:
+                formatted_date = datetime.strptime(date.strip(), "%Y-%m-%d").strftime("%d-%m-%Y")
+                if formatted_date not in shifts_dict:
+                    shifts_dict[formatted_date] = [(start_time.strip(), end_time.strip())]
+                else:
+                    shifts_dict[formatted_date].append((start_time.strip(), end_time.strip()))
+            except ValueError:
+                # This try-except block is to handle incorrect date formats or skip malformed lines
+                continue
 
     return shifts_dict
 
