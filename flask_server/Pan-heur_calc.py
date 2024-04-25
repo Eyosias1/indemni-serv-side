@@ -5,6 +5,8 @@ import pdfkit
 import pandas as pd
 from flask_cors import CORS
 import tempfile
+import re
+import csv
 from flask import Flask, request, send_file
 # Define the function
 
@@ -48,28 +50,61 @@ def from_shifts_df_to_dict(df_final_sorted):
             shifts_dict[formatted_date].append((start_time, end_time))
     return shifts_dict
 
+def rename_columns_with_regex(df):
+    # Using regular expressions to find and rename columns
+    df.columns = [re.sub(r'start[\w-]*datetime', 'start_datetime', col, flags=re.I) for col in df.columns]
+    df.columns = [re.sub(r'end[\w-]*datetime', 'end_datetime', col, flags=re.I) for col in df.columns]
+    return df
+def detect_separator(csv_file_path):
+    # Open the file in text mode and read a small part to guess the delimiter
+    with open(csv_file_path, 'r', newline='', encoding='iso-8859-1') as file:
+        sniffer = csv.Sniffer()
+        # Read the first 1024 bytes to get a sample of the file for sniffing
+        dialect = sniffer.sniff(file.read(1024))
+        return dialect.delimiter
+def decide_dayfirst(df, date_column):
+    day_first = True
+    # Sample up to 10 non-null date entries
+    sample_dates = df[date_column].dropna().head(10)
+    for date_str in sample_dates:
+        # Split the datetime string to isolate the date part
+        date_part = date_str.split(' ')[0]  # Assumes date and time are separated by a space
+        # Detect the separator and split by it
+        if '-' in date_part:
+            parts = date_part.split('-')
+        elif '/' in date_part:
+            parts = date_part.split('/')
+        else:
+            continue  # Skip if no recognizable separator is found
+        # Try converting the first part of the date to an integer
+        try:
+            first_part = int(parts[0])
+            if first_part > 32:
+                day_first = False
+                break  # If any date in the sample indicates day first, we assume day first for all
+        except ValueError:
+            continue  # Skip if conversion fails
 
+    return day_first
+def process_dates(df, date_columns):
+    for date_col in date_columns:
+        day_first = decide_dayfirst(df, date_col)
+        df[date_col] = pd.to_datetime(df[date_col], dayfirst=day_first)
+
+    # Format the dates and times as needed
+    df['date'] = df['start_datetime'].dt.strftime('%Y-%m-%d')
+    df['start time'] = df['start_datetime'].dt.strftime('%H:%M:%S')
+    df['end time'] = df['end_datetime'].dt.strftime('%H:%M:%S')
+    return df
 def extract_from_shift(file_path, csv_file_path):
     # Initialize an empty list to hold the shift data
     if csv_file_path:
-        df = pd.read_csv(csv_file_path)
+        delimiter = detect_separator(csv_file_path)
         # if the file is comma separated and contains western european characters
-        #df = pd.read_csv(csv_file_path, encoding='iso-8859-1', sep=';')
-
-        # Convert the 'start_datetime' and 'end_datetime' to datetime objects
-        #df['start_datetime'] = pd.to_datetime(df['startdatetime'])
-        #df['end_datetime'] = pd.to_datetime(df['enddatetime'])
-
-        # to make to format align with the format of pd.to_datetime
-        df['start_datetime'] = pd.to_datetime(df['start_datetime'] )
-        df['end_datetime'] = pd.to_datetime(df['end_datetime'])
-        # df['start_datetime'] = pd.to_datetime(df['start_datetime'], dayfirst=True)
-        # df['end_datetime'] = pd.to_datetime(df['end_datetime'], dayfirst=True)
-
-        # Create new columns 'date', 'start time', and 'end time'
-        df['date'] = df['start_datetime'].dt.strftime('%Y-%m-%d')
-        df['start time'] = df['start_datetime'].dt.strftime('%H:%M:%S')
-        df['end time'] = df['end_datetime'].dt.strftime('%H:%M:%S')
+        df = pd.read_csv(csv_file_path, encoding='iso-8859-1', sep=delimiter)
+        df = rename_columns_with_regex(df)
+        date_columns = ['start_datetime', 'end_datetime']  # Specify the date columns
+        df = process_dates(df, date_columns)
 
         # Select only the new columns in the desired order
         df_final = df[['date', 'start time', 'end time']]
