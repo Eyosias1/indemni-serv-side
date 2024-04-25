@@ -238,12 +238,13 @@ css_style = """
 
 @app.route('/process-csv', methods=['POST'])
 def process_csv():
-    uploaded_file_csv = request.files['csvfile']
-    uploaded_file_txt = request.files['txtfile']
+    uploaded_file_csv = request.files.get('csvfile')
+    uploaded_file_txt = request.files.get('txtfile')
     if uploaded_file_csv:
         shift_dict_1 = extract_from_shift("", uploaded_file_csv)
     else:
         shift_dict_1 = extract_from_shift(uploaded_file_txt, "")
+
     full_name = request.form['fullname']
     hourly_rate_input = request.form['hourlyrate']
     meal_ind = request.form['PanRepas']
