@@ -273,7 +273,7 @@ def parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hou
     # In one pdf
     annual_markdown_report += markdown_yearly_report + "\n\n"  # Add a couple of newlines between months
     markdown_text = annual_markdown_report
-    html_text = css_style + markdown2.markdown(markdown_text, extras=["tables"])
+    html_text = css_style + markdown2.markdown(markdown_text, extras=["tables"]) + '</body></html>'
     annual_pdf_output_path = os.path.join(f"{full_name}_Annual_Report.pdf")
     #
     print(f"Annual PDF report generated: {annual_pdf_output_path}")
@@ -285,6 +285,10 @@ def parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hou
     return temp_pdf_file_path
 
 css_style = """
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
     <style>
     table {
         width: 100%;
@@ -304,6 +308,8 @@ css_style = """
     font-weight: bold;
     }
     </style>
+</head>
+<body>
     """
 
 @app.route('/process-csv', methods=['POST'])
