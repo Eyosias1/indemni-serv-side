@@ -13,36 +13,10 @@ from flask import Flask, request, send_file
 
 app = Flask(__name__)
 CORS(app)
-
-# def from_shift_to_dict1(shift_file_path):
-#     shifts_data = []
-#     shifts_dict = {}
-#     # Open the file and read the lines
-#     with open(shift_file_path, 'r') as file:
-#         next(file)
-#         for line in file:
-#             # Split the line into components based on '|'
-#             parts = line.strip().split('|')
-#             # Check if the line contains the expected number of parts (3 for date, start time, end time)
-#             if len(parts) == 3:
-#                 date, start_time, end_time = parts
-#                 # Trim whitespace and add the tuple to the shifts_data list
-#                 shifts_data.append((date.strip(), start_time.strip(), end_time.strip()))
-#     for date, start, end in shifts_data:
-#         formatted_date = datetime.strptime(date, "%Y-%m-%d").strftime("%d-%m-%Y")
-#         if formatted_date not in shifts_dict:
-#             shifts_dict[formatted_date] = [(start, end)]
-#         else:
-#             shifts_dict[formatted_date].append((start, end))
-#     return shifts_dict
-
 def from_shift_to_dict1(file_storage):
-    shifts_data = []
     shifts_dict = {}
-    
     # Reset the file pointer to the start of the file
     file_storage.seek(0)
-    
     # Read all lines or iterate directly
     lines = file_storage.readlines()  # Read all lines at once
     lines_iterator = iter(lines)  # Convert the list of lines into an iterator
@@ -89,14 +63,24 @@ def rename_columns_with_regex(df):
     df.columns = [re.sub(r'start[\w-]*datetime', 'start_datetime', col, flags=re.I) for col in df.columns]
     df.columns = [re.sub(r'end[\w-]*datetime', 'end_datetime', col, flags=re.I) for col in df.columns]
     return df
+
 def detect_separator(file_storage):
     # Open the file in text mode and read a small part to guess the delimiter
-    content = file_storage.stream.read(1024)
+    content = file_storage.stream.read(4096)
     # Move the pointer back to the start of the file for further processing
     file_storage.stream.seek(0)
-    sniffer = csv.Sniffer()
-    dialect = sniffer.sniff(content.decode('iso-8859-1'))
-    return dialect.delimiter
+    try:
+        sniffer = csv.Sniffer()
+        dialect = sniffer.sniff(content.decode('iso-8859-1'))
+        return dialect.delimiter
+    except csv.Error:
+        # Fallback strategy: try common delimiters if sniffer fails
+        common_delimiters = [',', ';', '\t', '|']
+        for delimiter in common_delimiters:
+            if delimiter in content.decode('iso-8859-1'):
+                return delimiter
+        raise Exception("Could not determine the delimiter")
+
 def decide_dayfirst(df, date_column):
     day_first = True
     # Sample up to 10 non-null date entries
@@ -195,16 +179,24 @@ def generate_markdown2(shifts, meal_voucher_value, night_hour_value):
     time_21_15 = time(21, 15)
     time_18_45 = time(18, 45)
 
+    month_translation = {
+    'January': 'Janvier', 'February': 'Février', 'March': 'Mars', 'April': 'Avril',
+    'May': 'Mai', 'June': 'Juin', 'July': 'Juillet', 'August': 'Août',
+    'September': 'Septembre', 'October': 'Octobre', 'November': 'Novembre', 'December': 'Décembre'
+    }
+
     shifts_key = list(shifts.keys())
     date_Obj = datetime.strptime(shifts_key[0], "%d-%m-%Y")
     month_text = date_Obj.strftime("%B")
+    month_text = month_translation[month_text]
     year_text = date_Obj.strftime("%Y")
-    markdown = f"# {month_text} {year_text} Report\n\n"
-    markdown += "Date | Shifts | Meal Voucher | Night Hours | IND DIMANCHE \n| --- | --- | :---: | :---: | :---:\n"
+    markdown = f"# {month_text} {year_text} Rapport\n\n"
+    markdown += "Date | Shifts | Panier repas | Heures nuit maj. | IND DIMANCHE \n| --- | --- | :---: | :---: | :---:\n"
     total_meal_vouchers = 0
     total_night_hours = 0
     total_dimanche_ind = 0
     dimanche_ind = 0
+    total_shift_month = 0
     sunday_indemnities = calculer_indemnite_dimanche(shifts)
 
     for date, shift_times in shifts.items():
@@ -225,6 +217,7 @@ def generate_markdown2(shifts, meal_voucher_value, night_hour_value):
             total_meal_vouchers += 1 if meal_voucher else 0
             total_night_hours += night_hours
             total_dimanche_ind += dimanche_ind if is_sunday else 0
+            total_shift_month += 1
 
     # Calculating the totals
     total_meal_voucher_amount = total_meal_vouchers * meal_voucher_value
@@ -232,18 +225,18 @@ def generate_markdown2(shifts, meal_voucher_value, night_hour_value):
     total_amount = total_meal_voucher_amount + total_night_hour_amount + total_dimanche_ind
 
     # Adding the total to the markdown
-    markdown += f"**Total** |  | **{total_meal_vouchers} paniers repas** | **{total_night_hours:.3f}h** | <span class='number'>**{total_dimanche_ind:.3f}**</span> $\n"
+    markdown += f"**Total** | **{total_shift_month} shift** | **{total_meal_vouchers} paniers repas** | **{total_night_hours:.3f}h** | <span class='number'>**{total_dimanche_ind:.3f}**</span> €\n"
     markdown += "\n## Calcul des indemnités et suppléments\n"
-    markdown += f"- **Indemnités de repas** : {total_meal_vouchers} paniers repas à {meal_voucher_value} $ chacun = {total_meal_voucher_amount:.2f} $\n"
-    markdown += f"- **Heures de nuit** : {total_night_hours:.2f} heures à un supplément de {night_hour_value} $ par heure = {total_night_hour_amount:.2f} $\n"
-    markdown += f"- **Indémnités de travail de dimanche** : {total_dimanche_ind:.3f} $\n\n"
-    markdown += f"**Total général** : <span class='number'>**{total_amount:.2f}</span> $**\n"
+    markdown += f"- **Indemnités de repas** : {total_meal_vouchers} paniers repas à {meal_voucher_value:.3f} € chacun = {total_meal_voucher_amount:.2f} €\n"
+    markdown += f"- **Heures de nuit** : {total_night_hours:.2f} heures à un supplément de {night_hour_value:.3f} € par heure = {total_night_hour_amount:.2f} €\n"
+    markdown += f"- **Indémnités de travail de dimanche** : {total_dimanche_ind:.3f} €\n\n"
+    markdown += f"**Total général** : <span class='number'>**{total_amount:.2f}</span> €**\n"
 
     return markdown, total_amount, [month_text, year_text]
 
 def parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hour_supplement, css_style, full_name, shifts_dict):
     current_month = None
-    markdown_yearly_report = "\n\n\n# RAPPORT ANNUEL \n| Mois | Revenue ($) |\n|---|:---:|\n"
+    markdown_yearly_report = "\n\n\n# RAPPORT ANNUEL \n| Mois | Revenue (€) |\n|---|:---:|\n"
     month_shifts = {}
     total_cash = 0
     total = 0
@@ -256,7 +249,7 @@ def parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hou
                 markdown_report, total_cash, name = generate_markdown2(month_shifts, meal_voucher_amount, night_hour_supplement)
                 # Append this month's report and summary to the annual data
                 annual_markdown_report += markdown_report + "\n\n"  # Add a couple of newlines between months
-                markdown_yearly_report += f"{name[0]} {name[1]} | <span class='number'>**{total_cash:.3f}**</span> $ |\n"
+                markdown_yearly_report += f"{name[0]} {name[1]} | <span class='number'>**{total_cash:.3f}**</span> € |\n"
                 total += total_cash
                 current_month = date_obj.month
                 month_shifts = {date: shift_times}
@@ -264,11 +257,11 @@ def parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hou
     if month_shifts:
         markdown_report, total_cash, name = generate_markdown2(month_shifts, meal_voucher_amount, night_hour_supplement)
         annual_markdown_report += markdown_report + "\n\n"  # Add a couple of newlines between months
-        markdown_yearly_report += f"{name[0]} {name[1]} | <span class='number'>**{total_cash:.3f}**</span> $ |\n"
+        markdown_yearly_report += f"{name[0]} {name[1]} | <span class='number'>**{total_cash:.3f}**</span> € |\n"
         total += total_cash
     # write the annaual report
-    markdown_yearly_report += f"**TOTAL** |  <span class='number'>**{total:.3f}**</span> $ |\n"
-    markdown_yearly_report += f"\n**Somme Total** Panier repas,  Heure supplémentaire non Majoré et Indémnités de travail de dimanche = <span class='number'>**{total:.3f}** $</span>\n"
+    markdown_yearly_report += f"**TOTAL** |  <span class='number'>**{total:.3f}**</span> € |\n"
+    markdown_yearly_report += f"\n**Somme Total** Panier repas,  Heure supplémentaire non Majoré et Indémnités de travail de dimanche = <span class='number'>**{total:.3f}** €</span>\n"
 
     # In one pdf
     annual_markdown_report += markdown_yearly_report + "\n\n"  # Add a couple of newlines between months
@@ -328,7 +321,7 @@ def process_csv():
     taux_horaire_net = 11.07 if hourly_rate_input == "" else float(hourly_rate_input)
     increased_hourly_rate = taux_horaire_net * (20 / 100)
     night_hour_supplement = increased_hourly_rate
-    annual_markdown_report = f"# {full_name}\n"
+    annual_markdown_report = f"# Nom : {full_name}\n"
     pdf_to_file_path = parse_to_gen_mark_pdf(annual_markdown_report, meal_voucher_amount, night_hour_supplement, css_style, full_name, shift_dict_1)
     # Return the PDF as a file attachment
     return send_file(
